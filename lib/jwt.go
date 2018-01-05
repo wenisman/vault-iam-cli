@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 
 	"github.com/spf13/viper"
 )
 
-// HttpClient - interface to provide members a way of injecting requirements for testing
-type HttpClient interface {
+// HTTPClient - interface to provide members a way of injecting requirements for testing
+type HTTPClient interface {
 	Get(string) (*http.Response, error)
 	Post(url string, contentType string, body io.Reader) (*http.Response, error)
 	Do(*http.Request) (*http.Response, error)
@@ -41,8 +40,19 @@ func extractJwt(input []byte) (string, error) {
 	return data["ClientToken"].(string), nil
 }
 
+func extractIsValid(input []byte) (string, error) {
+	var temp map[string]interface{}
+	err := json.Unmarshal(input, &temp)
+	if err != nil {
+		return "", err
+	}
+
+	data := temp["data"].(map[string]interface{})
+	return fmt.Sprintf("%v", data["is_valid"]), nil
+}
+
 // AWSLogin - call vault with AWS data to log in and gain the client token
-func AWSLogin(client HttpClient, iamData IamData) (string, error) {
+func AWSLogin(client HTTPClient, iamData IamData) (string, error) {
 	// basic configuration options - read from viper
 	vaultURL := viper.Get("vault-url")
 	iamString, _ := json.Marshal(iamData)
@@ -65,8 +75,7 @@ func AWSLogin(client HttpClient, iamData IamData) (string, error) {
 }
 
 // GetJWT - call vault get jwt with the role and option claim
-func GetJWT(client HttpClient, clientToken string, roleName string, claimName string) (string, error) {
-	log.Println("client token:", clientToken)
+func GetJWT(client HTTPClient, clientToken string, roleName string, claimName string) (string, error) {
 	// construct the JSON to send to vault
 	data := map[string]interface{}{
 		"role_name": roleName,
@@ -85,7 +94,6 @@ func GetJWT(client HttpClient, clientToken string, roleName string, claimName st
 	req.Header.Add("X-Vault-Token", clientToken)
 	req.Header.Add("Content-Type", "application/json")
 
-	//	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -102,4 +110,31 @@ func GetJWT(client HttpClient, clientToken string, roleName string, claimName st
 	}
 
 	return extractJwt(body)
+}
+
+// ValidateJWT -  check if the provided JWT is valid or not
+func ValidateJWT(client HTTPClient, jwt string) (string, error) {
+	vaultURL := viper.Get("vault-url")
+
+	buf := bytes.NewReader([]byte(fmt.Sprintf("{ \"token\": \"%s\" }", jwt)))
+
+	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/v1/auth/jwtplugin/token/validate", vaultURL), buf)
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+
+	// extract if the jwt is valid or not from the response
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("Error occured during validation : %s", body)
+	}
+
+	return extractIsValid(body)
 }
