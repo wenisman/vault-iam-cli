@@ -138,3 +138,19 @@ func ValidateJWT(client HTTPClient, jwt string) (string, error) {
 
 	return extractIsValid(body)
 }
+
+// IssueJwt - issue the jwt based on your current IAM role
+func IssueJwt(client HTTPClient, role string, claim string) (string, error) {
+	iamData, err := GenerateLoginData()
+	if err != nil {
+		return "", fmt.Errorf("Error getting iam login data: %v", err)
+	}
+
+	token, err := AWSLogin(client, *iamData)
+
+	if err != nil {
+		return "", fmt.Errorf("Error signing into Vault: %v", err)
+	}
+
+	return GetJWT(client, token, role, claim)
+}

@@ -29,20 +29,7 @@ from the vault server. The JWT will also be returned as he output.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client := &http.Client{}
 
-		iamData, err := lib.GenerateLoginData()
-		if err != nil {
-			fmt.Println("Error getting iam login data", err)
-			return
-		}
-
-		token, err := lib.AWSLogin(client, *iamData)
-
-		if err != nil {
-			fmt.Println("Error signing into Vault", err)
-			return
-		}
-
-		jwt, err := lib.GetJWT(client, token, viper.GetString("role-name"), viper.GetString("claim-name"))
+		jwt, err := lib.IssueJwt(client, viper.GetString("role-name"), viper.GetString("claim-name"))
 
 		if err != nil {
 			fmt.Println("Error getting Token", err)
